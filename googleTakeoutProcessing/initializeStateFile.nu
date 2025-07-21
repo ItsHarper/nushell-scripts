@@ -3,15 +3,13 @@
 use ./constants.nu *
 
 def main [type: string, extension: string, parts: int, takeoutId: string]: nothing -> nothing {
-	# TODO(Harper): Use polars list-contains
-	if $type != $TYPE_GENERAL and $type != $TYPE_PHOTOS {
-		print -e $"Invalid type '($type)' \(must be '($TYPE_GENERAL)' or '($TYPE_PHOTOS)'\)"
+	if $type not-in $VALID_TYPES {
+		print -e $"Invalid type '($type)' \(must be one of ($VALID_TYPES)\)"
 		exit 1
 	}
 
-	# TODO(Harper): Use polars list-contains
-	if $extension != $EXTENSION_ZIP and $extension != $EXTENSION_TAR_GZ {
-		print -e $"Invalid extension '($extension)' \(must be '($EXTENSION_ZIP)' or '($EXTENSION_TAR_GZ)'\)"
+	if $extension not-in $VALID_EXTENSIONS {
+		print -e $"Invalid extension '($extension)' \(must be one of ($VALID_EXTENSIONS)\)"
 		exit 1
 	}
 

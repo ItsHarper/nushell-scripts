@@ -9,6 +9,8 @@ export const SAFE_PROGRESS_VALUES_FOR_EXTRACTION = [ $PROGRESS_NONE, $PROGRESS_D
 
 export const TYPE_GENERAL = "general"
 export const TYPE_PHOTOS = "photos";
+export const VALID_TYPES = [ $TYPE_GENERAL, $TYPE_PHOTOS ]
 
 export const EXTENSION_ZIP = "zip"
 export const EXTENSION_TAR_GZ = "tar.gz";
+export const VALID_EXTENSIONS = [ $EXTENSION_ZIP, $EXTENSION_TAR_GZ ]
