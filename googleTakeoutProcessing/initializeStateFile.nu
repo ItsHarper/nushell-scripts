@@ -35,10 +35,10 @@ def main [type: string, extension: string, parts: int, takeoutId: string]: nothi
 			| each { $in | into string | fill --width 3 --alignment right --character '0' }
 			| each { $"($prefix)($in).($extension)" }
 			| reduce -f {} { |it, acc|
-				$acc | insert $it { type: $type, progress: "none" }
+				$acc | insert $it { type: $type, progress: $PROGRESS_NONE }
 			}
 			| to nuon --tabs 1
 			# TODO(Harper): Remove -f until other TODO has been done
-			| save $progressFilePath
+			| save $takeoutStateFilePath
 
 }
