@@ -2,7 +2,12 @@
 
 use ./constants.nu *
 
-def main [type: string, extension: string, parts: int, takeoutId: string]: nothing -> nothing {
+def main [
+	--type: string,
+	--extension: string,
+	--parts: int,
+	--takeoutId: string
+]: nothing -> nothing {
 	if $type not-in $VALID_TYPES {
 		print -e $"Invalid type '($type)' \(must be one of ($VALID_TYPES)\)"
 		exit 1
