@@ -106,9 +106,12 @@ def convertStateToTable []: record -> table<filename: string, state: record<type
 	| returnType convertStateToTable "table<filename: string, state: record<type: string, progress: string>>"
 }
 
+# Because we don't have type-safety for the record form, it should never have extra
+# information added to it so that it's always in the right format for serialization
 def convertStateToRecord []: table<filename: string, state: record<type: string, progress: string>> -> record {
-	# TODO(Harper): Use select to filter out anything extra that got added
 	$in
+	# Filter out any extra data that got added somehow (our record can't be type-safe) :(
+	| each { { filename: $in.filename, state: { type: $in.state.type, progress: $in.state.progress } } }
 	| transpose --as-record --header-row
 	| returnType convertStateToRecord "record"
 }
