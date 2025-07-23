@@ -16,8 +16,8 @@ def isString [val: oneof<string, nothing>]: nothing -> bool {
 	}
 }
 
-print (
-	getRecordedStateAsRecord
+let fullUpdatedStateTableWithPaths = (
+	getRecordedStateAsRecord $takeoutStateFilePath
 	| convertStateToTable
 	| do {
 		try {
@@ -29,9 +29,19 @@ print (
 		$in
 	}
 	| updateStateTableAndGetPaths
-	| where { |x| isString $x.state.path }
-	| table --expand
 )
+
+# Write out the full, updated state
+$fullUpdatedStateTableWithPaths
+| convertStateToRecord
+| to nuon --tabs 1
+| save -f $takeoutStateFilePath
+
+# print (
+# 	$fullUpdatedStateTableWithPaths
+# 	| where { |x| isString $x.state.path }
+# 	| table --expand
+# )
 
 # TODO(Harper): Extract and delete files that have been downloaded but not extracted
 # TODO(Harper): Delete files from previous runs that have been extracted but not deleted
@@ -89,8 +99,8 @@ def getFilename [filePath: string]: nothing -> string {
 # and doesn't require iteration for lookups. Unfortunately, nushell
 # doesn't have support for typing record values without specifying
 # the key names (as far as I know, as of version 0.105)
-def getRecordedStateAsRecord []: nothing -> record {
-	open $takeoutStateFilePath
+def getRecordedStateAsRecord [stateFilePath: string]: nothing -> record {
+	open $stateFilePath
 	| returnType getRecordedStateAsRecord "record"
 }
 
