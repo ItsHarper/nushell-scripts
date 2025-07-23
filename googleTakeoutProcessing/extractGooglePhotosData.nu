@@ -12,7 +12,6 @@ def isString [val: oneof<string, nothing>]: nothing -> bool {
 	if $val == null or $val == $NO_STRING_VALUE or ($val | describe) != "string" {
 		false
 	} else {
-		print $"($val) is string"
 		true
 	}
 }
