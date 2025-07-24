@@ -151,61 +151,61 @@ def updateStateTableAndGetPaths [
 		| each { { filePath: $in, filename: (getFilename $in) } }
 
 	$stateTable
-		| each {
-			# TODO(Harper): Extract all of this into a function
-			let recordedProgress: string = $in.state.progress
-			let type: string = $in.state.type
-			let filename: string = $in.filename
-			# MAY CONTAIN $NO_STRING_VALUE
-			let filePath: string = do {
-				let filteredFilenamesArray = (
-					$downloadedFiles
-					| where filename == $filename
-					| get filePath
-				)
+	| each {
+		# TODO(Harper): Extract all of this into a function
+		let recordedProgress: string = $in.state.progress
+		let type: string = $in.state.type
+		let filename: string = $in.filename
+		# MAY CONTAIN $NO_STRING_VALUE
+		let filePath: string = do {
+			let filteredFilenamesArray = (
+				$downloadedFiles
+				| where filename == $filename
+				| get filePath
+			)
 
-				if ($filteredFilenamesArray | length) == 1 {
-					$filteredFilenamesArray.0
-				} else {
-					$NO_STRING_VALUE
-				}
-			}
-
-			let progress = if $recordedProgress in $PROGRESS_VALUES_NOT_EXTRACTED { #== $PROGRESS_NONE or $recordedProgress == $PROGRESS_DOWNLOADED {
-				# Entries that have not been extracted yet are either downloaded or not
-				let actualProgress = if (isString $filePath) { $PROGRESS_DOWNLOADED } else { $PROGRESS_NONE }
-
-				if $recordedProgress != $actualProgress {
-					if $actualProgress == $PROGRESS_DOWNLOADED {
-						# Since this script doesn't do any actual downloading,
-						# downloads are expected to always start out untracked
-						print $"Discovered download for ($filename)"
-					} else {
-						print -e $"WARNING: ($takeoutStateFilename) reported progress '($recordedProgress)' for ($filename), but the actual progress seems to be '($actualProgress)'"
-					}
-				}
-
-				$actualProgress
-			} else if $recordedProgress in $PROGRESS_VALUES_EXTRACTED {
-				# Entries that have already been extracted are either deleted or not
-				let actualProgress = if (isString $filePath) { $PROGRESS_EXTRACTED } else { $PROGRESS_EXTRACTED_AND_DELETED }
-
-				if $recordedProgress != $actualProgress {
-					if $actualProgress == $PROGRESS_EXTRACTED_AND_DELETED {
-						# It's not unusual for users to clean up their downloads folder, and no harm was done
-						print $"Discovered that extracted download ($filename) has already been deleted"
-					} else {
-						print -e $"WARNING: ($takeoutStateFilename) reported progress '($recordedProgress)' for ($filename), but the actual progress seems to be '($actualProgress)'"
-					}
-				}
-
-				$actualProgress
+			if ($filteredFilenamesArray | length) == 1 {
+				$filteredFilenamesArray.0
 			} else {
-				print -e $"ERROR: Unrecognized progress state '($recordedProgress)' in ($takeoutStateFilename)"
-				exit 1
+				$NO_STRING_VALUE
+			}
+		}
+
+		let progress = if $recordedProgress in $PROGRESS_VALUES_NOT_EXTRACTED { #== $PROGRESS_NONE or $recordedProgress == $PROGRESS_DOWNLOADED {
+			# Entries that have not been extracted yet are either downloaded or not
+			let actualProgress = if (isString $filePath) { $PROGRESS_DOWNLOADED } else { $PROGRESS_NONE }
+
+			if $recordedProgress != $actualProgress {
+				if $actualProgress == $PROGRESS_DOWNLOADED {
+					# Since this script doesn't do any actual downloading,
+					# downloads are expected to always start out untracked
+					print $"Discovered download for ($filename)"
+				} else {
+					print -e $"WARNING: ($takeoutStateFilename) reported progress '($recordedProgress)' for ($filename), but the actual progress seems to be '($actualProgress)'"
+				}
 			}
 
-			{ filename: $filename, state: { type: $type, progress: $progress, path: $filePath } }
+			$actualProgress
+		} else if $recordedProgress in $PROGRESS_VALUES_EXTRACTED {
+			# Entries that have already been extracted are either deleted or not
+			let actualProgress = if (isString $filePath) { $PROGRESS_EXTRACTED } else { $PROGRESS_EXTRACTED_AND_DELETED }
+
+			if $recordedProgress != $actualProgress {
+				if $actualProgress == $PROGRESS_EXTRACTED_AND_DELETED {
+					# It's not unusual for users to clean up their downloads folder, and no harm was done
+					print $"Discovered that extracted download ($filename) has already been deleted"
+				} else {
+					print -e $"WARNING: ($takeoutStateFilename) reported progress '($recordedProgress)' for ($filename), but the actual progress seems to be '($actualProgress)'"
+				}
+			}
+
+			$actualProgress
+		} else {
+			print -e $"ERROR: Unrecognized progress state '($recordedProgress)' in ($takeoutStateFilename)"
+			exit 1
 		}
-		| returnType updateStateTableAndGetPaths "table<filename: string, state: record<type: string, progress: string, path: string>>"
+
+		{ filename: $filename, state: { type: $type, progress: $progress, path: $filePath } }
+	}
+	| returnType updateStateTableAndGetPaths "table<filename: string, state: record<type: string, progress: string, path: string>>"
 }
