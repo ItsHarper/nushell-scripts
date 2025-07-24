@@ -17,7 +17,7 @@ def isString [val: oneof<string, nothing>]: nothing -> bool {
 }
 
 let fullUpdatedStateTableWithPaths = (
-	getRecordedStateAsRecord $takeoutStateFilePath
+	readRecordedStateAsRecord $takeoutStateFilePath
 	| convertStateToTable
 	| do {
 		try {
@@ -34,37 +34,54 @@ let fullUpdatedStateTableWithPaths = (
 # Write out the full, updated state
 $fullUpdatedStateTableWithPaths
 | convertStateToRecord
-| to nuon --tabs 1
-| save -f $takeoutStateFilePath
+| saveStateRecord $takeoutStateFilePath
 
-# print (
-# 	$fullUpdatedStateTableWithPaths
-# 	| where { |x| isString $x.state.path }
-# 	| table --expand
-# )
-
-# TODO(Harper): Extract and delete files that have been downloaded but not extracted
-# TODO(Harper): Delete files from previous runs that have been extracted but not deleted
-# TODO(Harper): Write takeoutState.nuon after every extraction or deletion
 # TODO(Harper): Skip files with a type other than "photos" (with warning)
 
-# for $filePath in $filePaths {
-# 	let fileName = getFileName $filePath
-# 	try {
-# 		# unzip -q $filePath -d $photosFolder
-# 		$progress = $progress | update $fileName "extractedToPhotosFolder"
-# 		print $"Extracted ($fileName)"
+$fullUpdatedStateTableWithPaths
+# Get the files that currently exist
+| where { |x| isString $x.state.path }
+# Strip out all of the information we can get after looking up the file's
+# state entry. From this point forward, we read the file before every
+# operation, and write it out after every operation.
+| each { { filename: $in.filename, path: $in.state.path } } #
+| each {
+	# TODO(Harper): Why are these typed as any without annotations?
+	let filename: string = $in.filename
+	let path: string = $in.path
+	let filenameAndPath: record<filename: string, path: string> = $in
+	let progressCellPath = ([ $filename, "progress" ] | into cell-path)
 
-# 		try {
-# 			# rm $filePath
-# 			print $"Deleted ($fileName)"
-# 		} catch { |e|
-# 			print $"Failed to delete ($fileName): ($e.msg)"
-# 		}
-# 	} catch { |e|
-# 		print $"Failed to extract ($fileName): ($e.msg)"
-# 	}
-# }
+	# TODO(Harper): If type-safe closures were a thing, it would be great to put
+	#	the boilerplate into a function that accepted a closure
+	readRecordedStateAsRecord $takeoutStateFilePath
+	| do {
+		let fullState = $in
+		let updatedEntry = (
+			$fullState
+			| getEntryFromStateRecord $filename
+			| extractDownloadedFileIfNecessary $filenameAndPath $photosFolder
+		)
+
+		$fullState
+		| update $filename $updatedEntry
+	}
+	| saveStateRecord $takeoutStateFilePath
+
+	readRecordedStateAsRecord $takeoutStateFilePath
+	| do {
+		let fullState = $in
+		let updatedEntry = (
+			$fullState
+			| getEntryFromStateRecord $filename
+			| deleteDownloadedFileIfExtracted $filenameAndPath
+		)
+
+		$fullState
+		| update $filename $updatedEntry
+	}
+	| saveStateRecord $takeoutStateFilePath
+}
 
 # As of Nushell 0.105, it's extremely easy to accidentally return values that do not match the
 # output type annotation (see the linked issues). We avoid problems by asserting return values
@@ -99,9 +116,22 @@ def getFilename [filePath: string]: nothing -> string {
 # and doesn't require iteration for lookups. Unfortunately, nushell
 # doesn't have support for typing record values without specifying
 # the key names (as far as I know, as of version 0.105)
-def getRecordedStateAsRecord [stateFilePath: string]: nothing -> record {
+def readRecordedStateAsRecord [stateFilePath: string]: nothing -> record {
 	open $stateFilePath
 	| returnType getRecordedStateAsRecord "record"
+}
+
+def getEntryFromStateRecord [
+	filename: string
+]: record -> record<type: string, progress: string> {
+	get $filename
+	| returnType "getEntryFromStateRecord" "record<type: string, progress: string>"
+}
+
+def saveStateRecord [stateFilePath: string]: record -> nothing {
+	$in
+	| to nuon --tabs 1
+	| save -f $stateFilePath
 }
 
 # Using the record form throughout the program would be simpler
@@ -145,6 +175,7 @@ def updateStateTableAndGetPaths [
 	# TODO(Harper): Exit with error code if there are files in downloadedZips that are not listed in progress.nuon
 
 	# TODO(Harper): Support .tar.gz
+	# TODO(Harper): Pass the folder to search in as a parameter
 	let downloadedFiles: table<filePath: string, filename: string> = ls ~/Downloads/takeout-*.zip
 		| get name # This actually gets the relative paths
 		| path expand
@@ -208,4 +239,90 @@ def updateStateTableAndGetPaths [
 		{ filename: $filename, state: { type: $type, progress: $progress, path: $filePath } }
 	}
 	| returnType updateStateTableAndGetPaths "table<filename: string, state: record<type: string, progress: string, path: string>>"
+}
+
+# Idempotent (will be a no-op for files that are already listed as having been extracted)
+def extractDownloadedFileIfNecessary [
+	filenameAndPath: record<filename: string, path: string>,
+	destFolder: string
+]: record<type: string, progress: string> -> record<type: string, progress: string> {
+# ]: record<filename: string, path: string> -> record<filename: string, progress: string> {
+	# TODO(Harper): Why does the LSP server type these as any until I annotate them?
+	let filename: string = $filenameAndPath.filename
+	let srcPath: string = $filenameAndPath.path
+	let initialProgress: string = $in.progress
+
+	def extract []: nothing -> string {
+		try {
+			unzip -q $srcPath -d $destFolder
+			print $"Extracted ($filename)"
+			$PROGRESS_EXTRACTED
+		} catch { |e|
+			print $"Failed to extract ($filename):"
+			print $e.rendered
+			$initialProgress
+		}
+	}
+
+	let progress: string = (
+		if $initialProgress == $PROGRESS_DOWNLOADED {
+			extract
+		} else if $initialProgress in $PROGRESS_VALUES_EXTRACTED {
+			print $"Already extracted ($filename)"
+			$initialProgress
+		} else if $initialProgress == $PROGRESS_NONE {
+			print -e $"extractDownloadedFileIfNecessary called on ($filename), which is not known as downloaded"
+			exit 1
+		} else {
+			print -e $"extractDownloadedFileIfNecessary called on ($filename) with unknown progress '($initialProgress)'"
+			exit 1
+		}
+	)
+
+	$in
+	| update progress $progress
+	| returnType extractDownloadedFile "record<type: string, progress: string>"
+}
+
+# Idempotent
+def deleteDownloadedFileIfExtracted [
+	filenameAndPath: record<filename: string, path: string>
+]: record<type: string, progress: string> -> record<type: string, progress: string> {
+let filename: string = $filenameAndPath.filename
+	let path: string = $filenameAndPath.path
+	let initialProgress: string = $in.progress
+
+	def delete []: nothing -> string {
+		try {
+			rm $path
+			print $"Deleted ($filename)"
+			$PROGRESS_EXTRACTED_AND_DELETED
+		} catch { |e|
+			print $"Failed to delete ($filename):"
+			print $e.rendered
+			$initialProgress
+		}
+	}
+
+	let progress: string = (
+		if $initialProgress == $PROGRESS_EXTRACTED {
+			delete
+		} else if $initialProgress == $PROGRESS_EXTRACTED_AND_DELETED {
+			print $"Already deleted ($filename)"
+			$initialProgress
+		} else if $initialProgress == $PROGRESS_DOWNLOADED {
+			# The extraction presumably just failed, and the user has already been informed of that
+			$initialProgress
+		} else if $initialProgress == $PROGRESS_NONE {
+			print -e $"deleteDownloadedFileIfExtracted called on ($filename), which is not known as downloaded"
+			exit 1
+		} else {
+			print -e $"deleteDownloadedFileIfExtracted called on ($filename) with unexpected progress '($initialProgress)'"
+			exit 1
+		}
+	)
+
+	$in
+	| update progress $progress
+	| returnType extractDownloadedFile "record<type: string, progress: string>"
 }

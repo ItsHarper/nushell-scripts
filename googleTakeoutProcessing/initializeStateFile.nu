@@ -7,6 +7,7 @@ def main [
 	--extension: string,
 	--parts: int,
 	--takeoutId: string
+	--force
 ]: nothing -> nothing {
 	if $type not-in $VALID_TYPES {
 		print -e $"Invalid type '($type)' \(must be one of ($VALID_TYPES)\)"
@@ -41,7 +42,6 @@ def main [
 				$acc | insert $it { type: $type, progress: $PROGRESS_NONE }
 			}
 			| to nuon --tabs 1
-			# TODO(Harper): Remove -f until other TODO has been done
-			| save $takeoutStateFilePath
+			| save --force=$force $takeoutStateFilePath
 
 }
