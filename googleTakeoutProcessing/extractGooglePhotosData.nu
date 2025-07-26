@@ -17,8 +17,9 @@ def isString [val: oneof<string, nothing>]: nothing -> bool {
 }
 
 def main [
-	--force-extract: list<string>
+	--force-extract: oneof<list<string>, nothing>
 ]: nothing -> nothing {
+	let force_extract = $force_extract | default []
 	let fullUpdatedStateTableWithPaths = (
 		readRecordedStateAsRecord $takeoutStateFilePath
 		| convertStateToTable
