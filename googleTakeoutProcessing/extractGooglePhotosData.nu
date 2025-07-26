@@ -16,71 +16,74 @@ def isString [val: oneof<string, nothing>]: nothing -> bool {
 	}
 }
 
-let fullUpdatedStateTableWithPaths = (
-	readRecordedStateAsRecord $takeoutStateFilePath
-	| convertStateToTable
-	| do {
-		try {
-			performBasicValidationOnStateTable $in
-		} catch { |e|
-			print -e $"Error: ($e.msg)\nEncountered while parsing ($takeoutStateFilePath)"
-			exit 1
+def main []: nothing -> nothing {
+	let fullUpdatedStateTableWithPaths = (
+		readRecordedStateAsRecord $takeoutStateFilePath
+		| convertStateToTable
+		| do {
+			try {
+				performBasicValidationOnStateTable $in
+			} catch { |e|
+				print -e $"Error: ($e.msg)\nEncountered while parsing ($takeoutStateFilePath)"
+				exit 1
+			}
+			$in
 		}
-		$in
-	}
-	| updateStateTableAndGetPaths
-)
+		| updateStateTableAndGetPaths
+	)
 
-# Write out the full, updated state
-$fullUpdatedStateTableWithPaths
-| convertStateToRecord
-| saveStateRecord $takeoutStateFilePath
-
-# TODO(Harper): Skip files with a type other than "photos" (with warning)
-
-$fullUpdatedStateTableWithPaths
-# Get the files that currently exist
-| where { |x| isString $x.state.path }
-# Strip out all of the information we can get after looking up the file's
-# state entry. From this point forward, we read the file before every
-# operation, and write it out after every operation.
-| each { { filename: $in.filename, path: $in.state.path } } #
-| each {
-	# TODO(Harper): Why are these typed as any without annotations?
-	let filename: string = $in.filename
-	let path: string = $in.path
-	let filenameAndPath: record<filename: string, path: string> = $in
-	let progressCellPath = ([ $filename, "progress" ] | into cell-path)
-
-	# TODO(Harper): If type-safe closures were a thing, it would be great to put
-	#	the boilerplate into a function that accepted a closure
-	readRecordedStateAsRecord $takeoutStateFilePath
-	| do {
-		let fullState = $in
-		let updatedEntry = (
-			$fullState
-			| getEntryFromStateRecord $filename
-			| extractDownloadedFileIfNecessary $filenameAndPath $photosFolder
-		)
-
-		$fullState
-		| update $filename $updatedEntry
-	}
+	# Write out the full, updated state
+	$fullUpdatedStateTableWithPaths
+	| convertStateToRecord
 	| saveStateRecord $takeoutStateFilePath
 
-	readRecordedStateAsRecord $takeoutStateFilePath
-	| do {
-		let fullState = $in
-		let updatedEntry = (
-			$fullState
-			| getEntryFromStateRecord $filename
-			| deleteDownloadedFileIfExtracted $filenameAndPath
-		)
+	# TODO(Harper): Skip files with a type other than "photos" (with warning)
 
-		$fullState
-		| update $filename $updatedEntry
+	$fullUpdatedStateTableWithPaths
+	# Get the files that currently exist
+	| where { |x| isString $x.state.path }
+	# Strip out all of the information we can get after looking up the file's
+	# state entry. From this point forward, we read the file before every
+	# operation, and write it out after every operation.
+	| each { { filename: $in.filename, path: $in.state.path } } #
+	| each {
+		# TODO(Harper): Why are these typed as any without annotations?
+		let filename: string = $in.filename
+		let path: string = $in.path
+		let filenameAndPath: record<filename: string, path: string> = $in
+		let progressCellPath = ([ $filename, "progress" ] | into cell-path)
+
+		# TODO(Harper): If type-safe closures were a thing, it would be great to put
+		#	the boilerplate into a function that accepted a closure
+		readRecordedStateAsRecord $takeoutStateFilePath
+		| do {
+			let fullState = $in
+			let updatedEntry = (
+				$fullState
+				| getEntryFromStateRecord $filename
+				| extractDownloadedFileIfNecessary $filenameAndPath $photosFolder
+			)
+
+			$fullState
+			| update $filename $updatedEntry
+		}
+		| saveStateRecord $takeoutStateFilePath
+
+		readRecordedStateAsRecord $takeoutStateFilePath
+		| do {
+			let fullState = $in
+			let updatedEntry = (
+				$fullState
+				| getEntryFromStateRecord $filename
+				| deleteDownloadedFileIfExtracted $filenameAndPath
+			)
+
+			$fullState
+			| update $filename $updatedEntry
+		}
+		| saveStateRecord $takeoutStateFilePath
 	}
-	| saveStateRecord $takeoutStateFilePath
+	null
 }
 
 # As of Nushell 0.105, it's extremely easy to accidentally return values that do not match the
