@@ -16,7 +16,9 @@ def isString [val: oneof<string, nothing>]: nothing -> bool {
 	}
 }
 
-def main []: nothing -> nothing {
+def main [
+	--force-extract: list<string>
+]: nothing -> nothing {
 	let fullUpdatedStateTableWithPaths = (
 		readRecordedStateAsRecord $takeoutStateFilePath
 		| convertStateToTable
@@ -50,8 +52,10 @@ def main []: nothing -> nothing {
 		# TODO(Harper): Why are these typed as any without annotations?
 		let filename: string = $in.filename
 		let path: string = $in.path
+		# TODO(Harper): Use flags instead of positional parameters that accept record types that otherwise wouldn't be needed
 		let filenameAndPath: record<filename: string, path: string> = $in
 		let progressCellPath = ([ $filename, "progress" ] | into cell-path)
+		let forceExtract = $filename in $force_extract
 
 		# TODO(Harper): If type-safe closures were a thing, it would be great to put
 		#	the boilerplate into a function that accepted a closure
@@ -61,7 +65,7 @@ def main []: nothing -> nothing {
 			let updatedEntry = (
 				$fullState
 				| getEntryFromStateRecord $filename
-				| extractDownloadedFileIfNecessary $filenameAndPath $photosFolder
+				| extractDownloadedFileIfNecessary $filenameAndPath $photosFolder --overwrite=$forceExtract
 			)
 
 			$fullState
@@ -247,17 +251,21 @@ def updateStateTableAndGetPaths [
 # Idempotent (will be a no-op for files that are already listed as having been extracted)
 def extractDownloadedFileIfNecessary [
 	filenameAndPath: record<filename: string, path: string>,
-	destFolder: string
+	destFolder: string,
+	--overwrite,
 ]: record<type: string, progress: string> -> record<type: string, progress: string> {
-# ]: record<filename: string, path: string> -> record<filename: string, progress: string> {
 	# TODO(Harper): Why does the LSP server type these as any until I annotate them?
 	let filename: string = $filenameAndPath.filename
 	let srcPath: string = $filenameAndPath.path
 	let initialProgress: string = $in.progress
 
 	def extract []: nothing -> string {
+		mut args = ["-q", $srcPath, "-d" $destFolder]
+		if $overwrite {
+			$args = $args | prepend "-o"
+		}
 		try {
-			unzip -q $srcPath -d $destFolder
+			unzip ...$args
 			print $"Extracted ($filename)"
 			$PROGRESS_EXTRACTED
 		} catch { |e|
