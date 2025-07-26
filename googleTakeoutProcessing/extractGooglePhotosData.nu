@@ -181,12 +181,14 @@ def updateStateTableAndGetPaths [
 	let stateTable = $in
 	# TODO(Harper): Exit with error code if there are files in downloadedZips that are not listed in progress.nuon
 
-	# TODO(Harper): Support .tar.gz
 	# TODO(Harper): Pass the folder to search in as a parameter
-	let downloadedFiles: table<filePath: string, filename: string> = ls ~/Downloads/takeout-*.zip
+	let downloadedFiles: table<filePath: string, filename: string> = (
+		ls ~/Downloads
 		| get name # This actually gets the relative paths
+		| where ("takeout-" in $it) and ($it ends-with ".zip") # TODO(Harper): Support .tar.gz
 		| path expand
 		| each { { filePath: $in, filename: (getFilename $in) } }
+	)
 
 	$stateTable
 	| each {
